@@ -22,6 +22,7 @@ using System.Net;
 using System.Text;
 using System.Windows;
 using System.Windows.Threading;
+using QuickLook.Common.Helpers;
 using QuickLook.Common.Plugin;
 using QuickLook.Plugin.HtmlViewer;
 using UtfUnknown;
@@ -75,6 +76,18 @@ namespace QuickLook.Plugin.MarkdownViewer
             md = WebUtility.HtmlEncode(md);
 
             var html = Resources.md2html.Replace("{{content}}", md);
+
+            #region Apply TOC width setting
+            string tocWidth = SettingHelper.Get("TocWidth", "saved", "QuickLook.Plugin.MarkdownViewer");
+            string defaultTocWidth = "178px";
+
+            if(tocWidth == "saved")
+                html = html.Replace("{{tocWidth}}", _panel._webStorage.GetItem("tocWidth")?.ToString() ?? defaultTocWidth);
+            else if(!string.IsNullOrEmpty(tocWidth))
+                html = html.Replace("{{tocWidth}}", tocWidth);
+            else
+                html = html.Replace("{{tocWidth}}", defaultTocWidth);
+            #endregion
 
             return html;
         }

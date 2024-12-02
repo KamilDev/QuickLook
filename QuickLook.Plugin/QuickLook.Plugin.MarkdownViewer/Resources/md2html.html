@@ -1298,53 +1298,94 @@ jopf:"\ud835\udd5b",Jscr:"\ud835\udca5",jscr:"\ud835\udcbf",Jsercy:"\u0408",jser
     <style>
       body {
         background-color: var(--bgColor-default);
+        margin: 0;
+        padding: 0;
+      }
+
+      /* Add a wrapper div for the flex layout */
+      .container {
+        display: flex;
+        min-height: 100vh;
       }
 
       .markdown-body {
-        width: 80%;
-        padding-left: 20%;
+        flex: 1;
+        padding: 1rem;
+        min-width: 0;
       }
+
+      /* From github.com */
+      .container-lg {
+        max-width: 1012px;
+        margin-right: auto;
+        margin-left: auto;
+      }
+
       #toc {
         font-family: "Segoe UI", Helvetica, Arial, sans-serif, "Segoe UI Emoji",
           "Segoe UI Symbol";
-        position: fixed;
+        position: sticky;
         top: 0;
         left: 0;
-        width: 18%;
-        height: 100%;
+
+        --var-toc-width: {{tocWidth}};
+        width: var(--var-toc-width); /* 178px */
+
+        min-width: 4px;
+        max-width: 80%;
+
+        height: 100vh;
         background: var(--bgColor-muted);
-        overflow: auto;
+
+        overflow-y: auto;
+        overflow-x: hidden;
+
+        max-height: 100vh;
+        box-sizing: border-box;
       }
+
+      #toc a {
+        display: block;
+        text-overflow: ellipsis;
+        overflow: hidden;
+      }
+
       .table-of-contents {
         font-size: 0.8em;
         padding: 1em 2em;
       }
+
       .table-of-contents ul {
         list-style-type: none;
-        padding: 0;
         padding-left: 1em;
       }
+
       .table-of-contents > ul {
         padding: 0;
       }
+
       .table-of-contents li {
         margin: 0 0 0.75em 0;
       }
+
       .table-of-contents a {
         color: var(--fgColor-default);
         text-decoration: none;
       }
+
       .table-of-contents a:hover,
       .table-of-contents a:active {
         text-decoration: underline;
         color: var(--fgColor-accent);
       }
+
       h1:target,
       h2:target,
       h3:target,
       h4:target {
         animation: highlight 1s ease;
       }
+
       @keyframes highlight {
         from {
           background: var(--bgColor-attention-muted);
@@ -1353,10 +1394,26 @@ jopf:"\ud835\udd5b",Jscr:"\ud835\udca5",jscr:"\ud835\udcbf",Jsercy:"\u0408",jser
           background: var(--bgColor-default);
         }
       }
+
+      .resize-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        z-index: 9999;
+        cursor: ew-resize;
+        user-select: none;
+      }
     </style>
+
     <textarea id="text-input" style="display: none">{{content}}</textarea>
-    <div id="toc" class="toc"></div>
-    <div id="preview" class="markdown-body"></div>
+
+    <div class="container">
+      <div id="toc" class="toc"></div>
+      <div id="preview" class="markdown-body container-lg"></div>
+    </div>
+
     <script>
       var md = window.markdownit().set({
         html: true,
@@ -1417,9 +1474,99 @@ jopf:"\ud835\udd5b",Jscr:"\ud835\udca5",jscr:"\ud835\udcbf",Jsercy:"\u0408",jser
 
       if (count < 2) {
         $("#toc").hide();
-        $(".markdown-body").css({ width: "100%", "padding-left": "0%" });
+        $(".markdown-body").css({ width: "100%" });
       }
     </script>
+
+    <script>
+      // Load saved width immediately
+      // (async function () {
+      //   const savedWidth = await window.customStorage.getItem("tocWidth");
+      //   if (savedWidth) {
+      //     document.getElementById("toc").style.width = savedWidth;
+      //   }
+      // })();
+
+      document.addEventListener("DOMContentLoaded", async function () {
+        const toc = document.getElementById("toc");
+        let isResizing = false;
+        let lastDownX = 0;
+        let overlay = null;
+        const RESIZE_HANDLE_WIDTH = 6; // Width of the resize handle area in pixels
+
+        // Create overlay function
+        function createOverlay() {
+          overlay = document.createElement("div");
+          overlay.className = "resize-overlay";
+          document.body.appendChild(overlay);
+          document.body.style.userSelect = "none"; // Disable text selection
+        }
+
+        // Remove overlay function
+        function removeOverlay() {
+          if (overlay && overlay.parentNode) {
+            overlay.parentNode.removeChild(overlay);
+            overlay = null;
+            document.body.style.userSelect = ""; // Re-enable text selection
+          }
+        }
+
+        // Check if cursor is in resize area
+        function isInResizeArea(clientX, rect) {
+          return (
+            clientX > rect.right - RESIZE_HANDLE_WIDTH &&
+            clientX < rect.right + RESIZE_HANDLE_WIDTH
+          );
+        }
+
+        // Handle cursor style when moving over the resize area
+        toc.addEventListener("mousemove", function (e) {
+          const rect = toc.getBoundingClientRect();
+          if (isInResizeArea(e.clientX, rect)) {
+            toc.style.cursor = "ew-resize";
+          } else {
+            toc.style.cursor = "auto";
+          }
+        });
+
+        toc.addEventListener("mousedown", function (e) {
+          const rect = toc.getBoundingClientRect();
+          if (isInResizeArea(e.clientX, rect)) {
+            isResizing = true;
+            lastDownX = e.clientX;
+            createOverlay();
+          }
+        });
+
+        document.addEventListener("mousemove", function (e) {
+          if (!isResizing) return;
+          const width = toc.getBoundingClientRect().width;
+          const newWidth = width + (e.clientX - lastDownX);
+
+          toc.style.width = newWidth + "px";
+
+          lastDownX = e.clientX;
+          e.preventDefault();
+        });
+
+        document.addEventListener("mouseup", async function () {
+          if (isResizing) {
+            isResizing = false;
+            removeOverlay();
+            // Save the new width
+            await window.customStorage.setItem("tocWidth", toc.style.width);
+          }
+        });
+
+        // Reset cursor when leaving the TOC
+        toc.addEventListener("mouseleave", function () {
+          if (!isResizing) {
+            toc.style.cursor = "auto";
+          }
+        });
+      });
+    </script>
+
     <script src="https://polyfill.io/v3/polyfill.min.js?features=es6"></script>
     <script
       id="MathJax-script"

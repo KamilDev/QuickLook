@@ -1,4 +1,4 @@
-﻿// Copyright © 2021 Paddy Xu and Frank Becker
+// Copyright © 2021 Paddy Xu and Frank Becker
 //
 // This file is part of QuickLook program.
 //
@@ -17,6 +17,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Drawing;
 using System.IO;
 using System.Reflection;
 using System.Windows;
@@ -31,6 +32,7 @@ namespace QuickLook.Plugin.HtmlViewer
     {
         private Uri _currentUri;
         private WebView2 _webView;
+        public WebStorage _webStorage;
 
         public WebpagePanel()
         {
@@ -40,6 +42,7 @@ namespace QuickLook.Plugin.HtmlViewer
             }
             else
             {
+                _webStorage = new WebStorage(Path.Combine(App.LocalDataPath, "WebStorage.json"));
                 _webView = new WebView2
                 {
                     CreationProperties = new CoreWebView2CreationProperties
@@ -47,6 +50,7 @@ namespace QuickLook.Plugin.HtmlViewer
                         UserDataFolder = Path.Combine(SettingHelper.LocalDataPath, @"WebView2_Data\\")
                     }
                 };
+                _webView.CoreWebView2InitializationCompleted += WebView_CoreWebView2InitializationCompleted;
                 _webView.NavigationStarting += NavigationStarting_CancelNavigation;
                 Content = _webView;
             }
@@ -71,7 +75,22 @@ namespace QuickLook.Plugin.HtmlViewer
         public void NavigateToHtml(string html)
         {
             _webView?.EnsureCoreWebView2Async()
-                .ContinueWith(_ => Dispatcher.Invoke(() => _webView?.NavigateToString(html)));
+                .ContinueWith(_ => Dispatcher.Invoke(() =>
+                {
+                    // Inject our localStorage implementation before loading the content
+                    var htmlWithStorage = $@"
+                        <script>
+                            window.customStorage = {{
+                                getItem: (key) => window.chrome.webview.hostObjects.webStorage.GetItem(key),
+                                setItem: (key, value) => window.chrome.webview.hostObjects.webStorage.SetItem(key, value),
+                                removeItem: (key) => window.chrome.webview.hostObjects.webStorage.RemoveItem(key),
+                                clear: () => window.chrome.webview.hostObjects.webStorage.Clear(),
+                                get length() {{ return window.chrome.webview.hostObjects.webStorage.Length; }}
+                            }};
+                        </script>
+                        {html}";
+                    _webView?.NavigateToString(htmlWithStorage);
+                }));
         }
 
         private void NavigationStarting_CancelNavigation(object sender, CoreWebView2NavigationStartingEventArgs e)
@@ -81,6 +100,11 @@ namespace QuickLook.Plugin.HtmlViewer
 
             var newUri = new Uri(e.Uri);
             if (newUri != _currentUri) e.Cancel = true;
+        }
+
+        private void WebView_CoreWebView2InitializationCompleted(object sender, EventArgs e)
+        {
+            _webView.CoreWebView2.AddHostObjectToScript("webStorage", _webStorage);
         }
 
         public void Dispose()
